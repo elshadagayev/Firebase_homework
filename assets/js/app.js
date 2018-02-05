@@ -23,33 +23,20 @@ var Game = function () {
 	var gameStarted = false;
 	var gameEnd = false;
 	var winner = '';
-	var chatIndex = 0;
 
 	this.start = function(){
-		var userId = $.cookie('player1');
-		if(userId) {
-			continueSession();
-		} else {
-			$('#name_btn').on('click', startSession);
-		}
+		continueSession();
+		$('#register_form').on('submit', function(e){
+			e.preventDefault();
 
-		gamesRef.on('value', function(snapshot){
-			var games = snapshot.val();
-			var gameId = $.cookie('gameid');
+			startSession();
+		});
+		$('#chat_form').on('submit', function(e){
+			e.preventDefault();
 
-			if(games[gameId] && games[gameId].sessionEnd) {
-				$.cookie('gameid', '');
-				$.cookie('player1', '');
-				$.cookie('player2', '');
-				gameStarted = false;
-				gameEnd = false;
-				$('.ask-name').show();
-				$('#player2_name').text('Waiting For Player 2');
-				instance.start();
-			}
+			startChat();
 		});
 
-		$('#chat_btn').on('click', startChat);
 		$('.end-session').on('click', function(){
 			var gameId = $.cookie('gameid');
 			if(!gameId)
@@ -61,7 +48,6 @@ var Game = function () {
 				database.ref('games/' + gameId).update(game);
 			});
 		});
-		updateChat();
 
 		$('#box1').html($('<h2>').text('Waiting For Player 1'));
 		$('#player2_name').text('Waiting For Player 2');
@@ -70,44 +56,45 @@ var Game = function () {
 
 	function updateChat () {
 		var gameId = $.cookie('gameid');
-		database.ref('chats/' + gameId).once('value', function(snapshot){
+		
+		database.ref('chats/' + gameId).on('value', function(snapshot){
 			var chats = snapshot.val();
+			
+			setChatWindow(chats);
+		});
 
+		function setChatWindow (chats) {
 			if(!chats)
 				return;
 
+			$('.chat-window').empty();
+
 			for(var i in chats) {
-				if(i < chatIndex)
-					continue;
 
 				var chat = chats[i];
 
-				database.ref('users/' + chat.player).once('value', function(snapshot){
-					var user = snapshot.val();
-					if(!user)
-						return;
-					var div = $('<div>');
-					div.append($('<strong>').text(user.name + ': '));
-					div.append($('<span>').text(chat.text));
-					$('.chat-window').prepend(div);
-				});
-
-				chatIndex = i+1;
-
-				break;
+				(function(chat){
+					database.ref('users/' + chat.player).once('value', function(snapshot){
+						var user = snapshot.val();
+						if(!user)
+							return;
+						var div = $('<div>');
+						div.append($('<strong>').text(user.name + ': '));
+						div.append($('<span>').text(chat.text));
+						$('.chat-window').prepend(div);
+					});
+				})(chat);
 			}
-		});
-
-		setTimeout(updateChat, 1000);
+		}
 	}
 
 	function startChat () {
-		if(!gameStarted || gameEnd)
-			return;
-
 		var gameId = $.cookie('gameid');
 		var player1 = $.cookie('player1');
 		var player2 = $.cookie('player2');
+
+		if(!gameId || !player1 || !player2)
+			return;
 
 		var text = $('#chat_inp').val();
 
@@ -122,7 +109,7 @@ var Game = function () {
 				text
 			});
 
-			database.ref('chats/' + gameId).set(chat);
+			database.ref('chats/' + gameId).update(chat);
 		});
 
 		$('#chat_inp').val('');
@@ -135,133 +122,22 @@ var Game = function () {
 			return;
 		}
 
-		registerUser(name);
-	}
-
-	function registerUser(name) {
 		var user = usersRef.push({
-			name: name
+			name
 		});
 
 		user.then(function(snapshot){
 			$.cookie('player1', snapshot.key);
 			$('#name_inp').val('');
-			continueSession();
 		});
 	}
 
-	function isGameEnded () {
+	function resetGame (player1Wins, player2Wins) {
 		var gameId = $.cookie('gameid');
 		var player1 = $.cookie('player1');
 		var player2 = $.cookie('player2');
-
-		database.ref('games/' + gameId).once('value', function(snapshot){
-			var game = snapshot.val();
-			var user1Variant = game.user1Variant;
-			var user2Variant = game.user2Variant;
-
-
-			if(user1Variant == 'scissors' && user2Variant == 'rock') {
-				// user2 wins
-				winner = 'user2';
-				gameEnd = true;
-
-				database.ref('users/' + game.user2).once('value', function(snapshot){
-					var user = snapshot.val();
-					$('#box2').html($('<h1>').text(user.name + ' Won!'));
-				});
-			}
-			else if(user1Variant == 'rock' && user2Variant == 'scissors') {
-				// user1 wins
-				winner = 'user1';
-				gameEnd = true;
-
-				database.ref('users/' + game.user1).once('value', function(snapshot){
-					var user = snapshot.val();
-					$('#box2').html($('<h1>').text(user.name + ' Won!'));
-				});
-			}
-			else if(user1Variant == 'scissors' && user2Variant == 'paper') {
-				// user1 wins
-				winner = 'user1';
-				gameEnd = true;
-
-				database.ref('users/' + game.user1).once('value', function(snapshot){
-					var user = snapshot.val();
-					$('#box2').html($('<h1>').text(user.name + ' Won!'));
-				});
-			}
-			else if(user1Variant == 'paper' && user2Variant == 'scissors') {
-				// user2 wins
-				winner = 'user2';
-				gameEnd = true;
-
-				database.ref('users/' + game.user2).once('value', function(snapshot){
-					var user = snapshot.val();
-					$('#box2').html($('<h1>').text(user.name + ' Won!'));
-				});
-			}
-			else if(user1Variant == 'paper' && user2Variant == 'rock') {
-				// user1 wins
-				winner = 'user1';
-				gameEnd = true;
-
-				database.ref('users/' + game.user1).once('value', function(snapshot){
-					var user = snapshot.val();
-					$('#box2').html($('<h1>').text(user.name + ' Won!'));
-				});
-			}
-			else if(user1Variant == 'rock' && user2Variant == 'paper') {
-				// user2 wins
-				winner = 'user2';
-				gameEnd = true;
-
-				database.ref('users/' + game.user2).once('value', function(snapshot){
-					var user = snapshot.val();
-					$('#box2').html($('<h1>').text(user.name + ' Won!'));
-				});
-			} else if(user1Variant === user2Variant && user1Variant && user2Variant) {
-				gameEnd = true;
-				winner = '';
-
-				$('#box2').html($('<h1>').text('There is no winner'));
-			}
-
-			if(game.user1Variant && game.user1 === player1) {
-				$('.variant').hide();
-				$('.variant').each(function(ind,el){
-					if($(el).html().trim().toLowerCase() === game.user1Variant) {
-						$(el).show().css({
-							fontSize: '4em'
-						});
-					}
-				});
-			} else if(game.user2Variant && game.user2 === player1) {
-				$('.variant').hide();
-				$('.variant').each(function(ind,el){
-					if($(el).html().trim().toLowerCase() === game.user2Variant) {
-						$(el).show().css({
-							fontSize: '4em'
-						});
-					}
-				});
-			}
-
-			if(gameEnd) {
-				if(game.user1Variant && game.user1 === player2) {
-					$('#player2_choise').text(user1Variant);
-				} else if(game.user2Variant && game.user2 === player2) {
-					$('#player2_choise').text(user2Variant);
-				}
-				database.ref('games/' + gameId).update(game);
-			}
-		});
-	}
-
-	function resetGame () {
-		var gameId = $.cookie('gameid');
-		var player1 = $.cookie('player1');
-		var player2 = $.cookie('player2');
+		gameEnd = false;
+		gameStarted = true;
 
 		$('#box2').empty();
 		$('.variant').css({
@@ -272,79 +148,277 @@ var Game = function () {
 
 		database.ref('games/' + gameId).once('value', function(snapshot){
 			var game = snapshot.val();
-			switch(winner) {
-				case 'user1':
-					game.user1Wins = game.user1Wins ? game.user1Wins + 1 : 1;
-					break;
-				case 'user2':
-					game.user2Wins = game.user2Wins ? game.user2Wins + 1 : 1;
-					break;
-				default:
-					winner = '';
-			}
-
 			game.user1Variant = null;
 			game.user2Variant = null;
-			gameEnd = false;
-			gameStarted = true;
+			game.user1Wins = player1Wins;
+			game.user2Wins = player2Wins;
 			database.ref('games/' + gameId).update(game);
-			continueSession();
 		});
 	}
 
-	function continueSession () {
-		$('.ask-name').hide();
-		var userId = $.cookie('player1');
+	function updateScore (game) {
+		var player1 = $.cookie('player1');
 		var player2 = $.cookie('player2');
-		var gameId = $.cookie('gameid');
+		var gameId = $.cookie('gameId');
+		var score = {player1: 0, player2: 0};
 
-		// player1
-		usersRef.child(userId).once('value', function(snapshot) {
-			if(!snapshot.val())
-				return;
+		if(game.user1 === player1) {
+			score.player1 = game.user1Wins;
+			score.player2 = game.user2Wins;
+		} else {
+			score.player1 = game.user2Wins;
+			score.player2 = game.user1Wins;
+		}
 
-			setUser(snapshot.val().name, '#box1', true);
-		
-			// search empty room or create new room
-			if(!gameStarted && !gameId) {
+		if(typeof score.player1 !== 'undefined' && typeof score.player2 !== 'undefined')
+			$('.score').html(score.player1 + ' - ' + score.player2);
+	}
+
+	function endSession () {
+		$.cookie('gameid', '');
+		$.cookie('player1', '');
+		$.cookie('player2', '');
+		gameStarted = false;
+		gameEnd = false;
+		$('#box1').html('<h2>Waiting For Player 1</h2>');
+		$('#player2_name').html('Waiting For Player 2');
+		$('#player2_choise').empty();
+		$('.score').empty();
+		$('.chat-window').empty();
+		$('.ask-name').show();
+	}
+
+	function continueSession () {
+
+		gamesRef.on('value', function(snapshot){
+			setTimeout(function(){
+				var games = snapshot.val();
+				var gameId = $.cookie('gameid');
+				var player1 = $.cookie('player1');
+				var player2 = $.cookie('player2');
+
+				if(!gameId || !games || !games[gameId]) {
+					return;
+				}
+
+				updateChat();
+
+				var game = games[gameId];
+
+				if(game.sessionEnd) {
+					endSession();
+					return;
+				}
+
+				if(game.user1 && game.user2 && !$.cookie('player2')) {
+					if(game.user1 === player1) {
+						player2 = game.user2;
+					} else {
+						player2 = game.user1;
+					}
+
+					if(player2) {
+						$.cookie('player2', player2);
+						database.ref('users/' + player2).once('value', function(snapshot){
+							var user = snapshot.val();
+							$('#player2_name').text(user.name);
+						});
+					}
+				} else if(game.user1 && game.user2) {
+					var user1Variant = game.user1Variant;
+					var user2Variant = game.user2Variant;
+					var player1Wins = game.user1Wins || 0;
+					var player2Wins = game.user2Wins || 0;
+
+					updateScore(game);
+
+					setTimeout(function(){
+						if(game.user1 === player1 && user1Variant) {
+							$('.variant').hide();
+							$('.variant').each(function(ind,el){
+								if($(el).html() === user1Variant) {
+									$(el).css({
+										fontSize: '4em'
+									}).show();
+								}
+							})
+						} else if(game.user2 === player1 && user2Variant) {
+							$('.variant').hide();
+							$('.variant').each(function(ind,el){
+								if($(el).html() === user2Variant) {
+									$(el).css({
+										fontSize: '4em'
+									}).show();
+								}
+							})
+						}
+					}, 0);
+
+					database.ref('users/' + player2).once('value', function(snapshot){
+						var user = snapshot.val();
+						$('#player2_name').text(user.name);
+					});
+
+
+					if(user1Variant == 'scissors' && user2Variant == 'rock') {
+						// user2 wins
+						winner = 'user2';
+						gameEnd = true;
+						player2Wins++;
+
+						database.ref('users/' + game.user2).once('value', function(snapshot){
+							var user = snapshot.val();
+							$('#box2').html($('<h1>').text(user.name + ' Wins!'));
+						});
+					}
+					else if(user1Variant == 'rock' && user2Variant == 'scissors') {
+						// user1 wins
+						winner = 'user1';
+						gameEnd = true;
+						player1Wins++;
+
+						database.ref('users/' + game.user1).once('value', function(snapshot){
+							var user = snapshot.val();
+							$('#box2').html($('<h1>').text(user.name + ' Wins!'));
+						});
+					}
+					else if(user1Variant == 'scissors' && user2Variant == 'paper') {
+						// user1 wins
+						winner = 'user1';
+						gameEnd = true;
+						player1Wins++;
+
+						database.ref('users/' + game.user1).once('value', function(snapshot){
+							var user = snapshot.val();
+							$('#box2').html($('<h1>').text(user.name + ' Wins!'));
+						});
+					}
+					else if(user1Variant == 'paper' && user2Variant == 'scissors') {
+						// user2 wins
+						winner = 'user2';
+						gameEnd = true;
+						player2Wins++;
+
+						database.ref('users/' + game.user2).once('value', function(snapshot){
+							var user = snapshot.val();
+							$('#box2').html($('<h1>').text(user.name + ' Wins!'));
+						});
+					}
+					else if(user1Variant == 'paper' && user2Variant == 'rock') {
+						// user1 wins
+						winner = 'user1';
+						gameEnd = true;
+						player1Wins++;
+
+						database.ref('users/' + game.user1).once('value', function(snapshot){
+							var user = snapshot.val();
+							$('#box2').html($('<h1>').text(user.name + ' Wins!'));
+						});
+					}
+					else if(user1Variant == 'rock' && user2Variant == 'paper') {
+						// user2 wins
+						winner = 'user2';
+						gameEnd = true;
+						player2Wins++;
+
+						database.ref('users/' + game.user2).once('value', function(snapshot){
+							var user = snapshot.val();
+							$('#box2').html($('<h1>').text(user.name + ' Wins!'));
+						});
+					} else if(user1Variant === user2Variant && user1Variant && user2Variant) {
+						gameEnd = true;
+						winner = '';
+
+						$('#box2').html($('<h1>').text('There is no winner'));
+					}
+
+					if(gameEnd) {
+						if(game.user1Variant && game.user1 === player2) {
+							$('#player2_choise').text(user1Variant);
+						} else if(game.user2Variant && game.user2 === player2) {
+							$('#player2_choise').text(user2Variant);
+						}
+
+						setTimeout(function(){
+							resetGame(player1Wins, player2Wins);
+						}, 3000);
+					}
+				}
+			}, 500);
+		});
+
+		usersRef.on('value', function(snapshot){
+
+			setTimeout(function(){
+				var users = snapshot.val();
+				var player1 = $.cookie('player1');
+				var player2 = $.cookie('player2');
+				var gameId = $.cookie('gameid');
+
+				if(!player1 || !users[player1])
+					return;
+
+				$('.ask-name').hide();
+
+				setUser(users[player1].name, '#box1', true);
+
 				gamesRef.once('value', function(snapshot){
 					var games = snapshot.val();
 
-					for(var id in games) {
-						var game = games[id];
-						// if game was not started and if user1 is not equal to current user and user2 is empty then join to that room
-						if(!game.sessionEnd && game.user1 && game.user1 !== userId && !game.user2 && !gameStarted) {
-							game.user2 = userId;
-							database.ref('games/' + id).update(game);
-							gameStarted = true;
-							$.cookie('gameid', id);
-						} else if(!game.sessionEnd && game.user2 && game.user2 !== userId && !game.user1 && !gameStarted) {
-							game.user1 = userId;
-							database.ref('games/' + id).update(game);
-							gameStarted = true;
-							$.cookie('gameid', id);
+					if(games) {
+						for(var id in games) {
+							var game = games[id];
+							if(!game.sessionEnd && (game.user1 === player1 || game.user2 === player2)) {
+								//game.user2 = player1;
+								//database.ref('games/' + id).update(game);
+								//gameStarted = true;
+								$.cookie('gameid', id);
+							}
 						}
-					}
 
-					if(!gameStarted) {
+						if(!$.cookie('gameid')) {
+							for(var id in games) {
+								var game = games[id];
+								if(!game.sessionEnd && game.user2 && game.user2 !== player1 && !game.user1) {
+									game.user1 = player1;
+									database.ref('games/' + id).update(game);
+									//gameStarted = true;
+									$.cookie('gameid', id);
+								} else if(!game.sessionEnd && game.user1 && game.user1 !== player1 && !game.user2) {
+									game.user2 = player1;
+									database.ref('games/' + id).update(game);
+									//gameStarted = true;
+									$.cookie('gameid', id);
+								}
+							}
+						}
+
+						if(!$.cookie('gameid')) {
+							var game = gamesRef.push({
+								user1: player1
+							});
+							game.then(function(snapshot){
+								$.cookie('gameid', snapshot.key);
+							});
+						}
+					} else {
 						var game = gamesRef.push({
-							user1: userId
+							user1: player1
 						});
-						gameStarted = true;
 						game.then(function(snapshot){
 							$.cookie('gameid', snapshot.key);
 						});
 					}
 				});
-			} else {
-				gameStarted = true;
-			}
-		});
 
-		if(!gameStarted)
+			}, 500);
+		})
+		
+
+		/*if(!gameStarted)
 			setTimeout(continueSession, 1000);
 		else
-			updateGame();
+			updateGame();*/
 	}
 
 	function updateGame () {
@@ -403,11 +477,6 @@ var Game = function () {
 		scissors.dblclick(resizeSelectedVariant);
 
 		function resizeSelectedVariant () {
-			$(id).find('.variant').hide();
-			$(this).show().css({
-				fontSize: '4em'
-			});
-
 			var variant = $(this).html().trim().toLowerCase();
 
 			// sending selected variant to database
